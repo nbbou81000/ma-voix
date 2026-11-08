@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ma Voix — studio d'enregistrement</title>
+<style>
+  :root{--bg:#14161b;--card:#1e2128;--line:#2c313a;--txt:#e9ecf1;--mut:#8b93a1;--acc:#ff6a3d;--ok:#3ecf8e;--warn:#f5b942;--bad:#ff4d5e}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  body{padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 24px)}
+  .wrap{max-width:640px;margin:0 auto}
+  h1{font-size:20px;margin:4px 0 2px}
+  .sub{color:var(--mut);font-size:14px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+  .tips li{margin:6px 0;line-height:1.4}
+  button{font:inherit;border:0;border-radius:12px;padding:14px 16px;background:#2a2f38;color:var(--txt);cursor:pointer}
+  button:disabled{opacity:.4}
+  .primary{background:var(--acc);color:#fff;font-weight:600;width:100%;font-size:17px}
+  .row{display:flex;gap:8px;margin-top:10px}
+  .row button{flex:1}
+  .prog{height:8px;background:#2a2f38;border-radius:8px;overflow:hidden;margin:8px 0}
+  .prog div{height:100%;background:var(--ok);width:0}
+  .meta{display:flex;justify-content:space-between;color:var(--mut);font-size:14px}
+  .phrase{font-size:26px;line-height:1.35;font-weight:500;min-height:140px;display:flex;align-items:center;padding:8px 2px}
+  .num{color:var(--mut);font-size:13px}
+  .state{font-size:14px;min-height:20px;margin-top:6px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  .level{height:10px;background:#2a2f38;border-radius:6px;overflow:hidden;margin-top:12px}
+  .level div{height:100%;width:0;background:var(--ok);transition:width .05s}
+  .rec{width:100%;height:84px;border-radius:42px;font-size:20px;font-weight:700;background:var(--acc);color:#fff;margin-top:14px}
+  .rec.on{background:var(--bad);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.75}}
+  label{display:flex;gap:8px;align-items:center;color:var(--mut);font-size:14px;margin-top:12px}
+  .hidden{display:none}
+  .small{font-size:13px;color:var(--mut);line-height:1.4}
+  .danger{background:transparent;color:var(--bad);border:1px solid #4a2a2f;width:100%;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎙️ Ma Voix</h1>
+  <div class="sub">Studio d'enregistrement pour créer ta voix de synthèse</div>
+
+  <div id="intro" class="card">
+    <b>Avant de commencer</b>
+    <ul class="tips">
+      <li>Pièce <b>calme</b> : pas de télé, pas de machine, fenêtres fermées.</li>
+      <li>Téléphone posé à <b>20–30 cm</b> de ta bouche, toujours au même endroit.</li>
+      <li>Lis avec ta <b>voix de flash info</b> : claire, posée, toujours le même ton.</li>
+      <li>Appuie sur le bouton, attends une demi-seconde, lis, puis appuie à nouveau.</li>
+      <li>Tu bafouilles ? Pas grave : <b>Refaire</b>. Phrase trop dure ? <b>Passer</b>.</li>
+      <li>Tout est gardé sur le téléphone : tu peux t'arrêter et reprendre plus tard.</li>
+    </ul>
+    <button class="primary" id="btnStart">Activer le micro</button>
+    <div class="state bad" id="err"></div>
+  </div>
+
+  <div id="studio" class="hidden">
+    <div class="card">
+      <div class="meta"><span id="count">0 / 0</span><span id="mins">0 min enregistrées</span></div>
+      <div class="prog"><div id="bar"></div></div>
+      <div class="num" id="pnum"></div>
+      <div class="phrase" id="phrase"></div>
+      <div class="state" id="state"></div>
+      <div class="level"><div id="lvl"></div></div>
+      <button class="rec" id="btnRec">● Enregistrer</button>
+      <div class="row">
+        <button id="btnPrev">← Préc.</button>
+        <button id="btnPlay">▶ Écouter</button>
+        <button id="btnNext">Suiv. →</button>
+      </div>
+      <div class="row">
+        <button id="btnRedo">↺ Refaire</button>
+        <button id="btnJump">⏭ 1re à faire</button>
+      </div>
+      <label><input type="checkbox" id="auto" checked> Passer automatiquement à la phrase suivante</label>
+    </div>
+
+    <div class="card">
+      <b>Envoyer mes enregistrements</b>
+      <p class="small">Quand tu as fini (ou à la fin de chaque séance, par sécurité), télécharge le fichier ZIP. Il contient toutes tes phrases déjà enregistrées. C'est ce fichier qui servira à entraîner ta voix.</p>
+      <button class="primary" id="btnZip">⬇ Télécharger mes enregistrements (.zip)</button>
+      <div class="state" id="zipState"></div>
+      <button class="danger" id="btnClear">Tout effacer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PHRASES = [
+"Bonjour, il est huit heures, voici le flash info du Fil.",
+"Bonsoir à tous, et bienvenue sur Radio Le Cube.",
+"Voici les titres de l'actualité de ce dimanche matin.",
+"Le gouvernement a présenté hier soir son nouveau projet de loi sur le logement.",
+"À Albi, les travaux du pont Vieux devraient s'achever avant la fin du mois.",
+"La météo s'annonce plutôt clémente sur l'ensemble du Tarn aujourd'hui.",
+"Quelques averses sont toutefois attendues en fin d'après-midi près de Castres.",
+"Les températures resteront douces, entre douze et dix-huit degrés.",
+"Côté sport, le Castres Olympique s'est imposé face à Toulouse samedi soir.",
+"C'était le flash info du Fil, merci de votre écoute.",
+"Retrouvez toute l'actualité en continu sur notre site.",
+"Prochain rendez-vous dans une heure, restez avec nous.",
+"Une nouvelle étude montre que les Français dorment de moins en moins.",
+"Le prix du carburant a légèrement baissé cette semaine.",
+"Les syndicats appellent à une journée de mobilisation jeudi prochain.",
+"Le Premier ministre s'exprimera ce soir au journal de vingt heures.",
+"À l'étranger, les négociations se poursuivent malgré de fortes tensions.",
+"Les chercheurs ont découvert une nouvelle espèce de grenouille en Guyane.",
+"Un incendie a ravagé plusieurs hectares de garrigue dans l'Hérault.",
+"Aucune victime n'est à déplorer, selon les pompiers.",
+"La circulation est perturbée sur la rocade toulousaine ce matin.",
+"Pensez à vérifier l'état des routes avant de prendre le volant.",
+"Le marché de Noël ouvrira ses portes le premier décembre place Sainte-Cécile.",
+"La cathédrale d'Albi attire chaque année des centaines de milliers de visiteurs.",
+"Le festival de jazz revient cet été avec une programmation ambitieuse.",
+"Les billets seront mis en vente dès lundi matin.",
+"Quel temps fera-t-il ce week-end dans la région ?",
+"Faut-il s'inquiéter de la hausse des prix de l'énergie ?",
+"Pourquoi les abeilles disparaissent-elles aussi vite ?",
+"Comment les communes s'organisent-elles face à la sécheresse ?",
+"Incroyable ! Le petit club local s'est qualifié pour les huitièmes de finale.",
+"Quelle surprise pour les habitants de Carmaux, réveillés par la neige.",
+"Le maire a annoncé l'ouverture d'une nouvelle médiathèque au printemps.",
+"Les élèves du collège ont remporté un concours national de robotique.",
+"Une exposition consacrée à Toulouse-Lautrec ouvre ses portes au musée.",
+"L'hôpital recrute des infirmiers et des aides-soignants pour l'hiver.",
+"La campagne de vaccination contre la grippe se poursuit jusqu'en janvier.",
+"Les urgences rappellent qu'il faut appeler le quinze en cas de besoin.",
+"Un nouveau satellite européen a été lancé avec succès depuis Kourou.",
+"La fusée a décollé à vingt-deux heures quarante, heure de Paris.",
+"L'intelligence artificielle continue de bouleverser le monde du travail.",
+"Les géants du numérique annoncent des investissements colossaux.",
+"Une panne informatique a paralysé plusieurs aéroports pendant la nuit.",
+"Les voyageurs ont dû patienter de longues heures dans les terminaux.",
+"La SNCF annonce un trafic normal sur l'ensemble des lignes régionales.",
+"Le bus de la ligne trois sera dévié en raison de travaux rue de la République.",
+"Le conseil municipal se réunira mardi à dix-huit heures trente.",
+"Les habitants sont invités à donner leur avis sur le futur parc urbain.",
+"La rivière Tarn a atteint un niveau inhabituel après les fortes pluies.",
+"Une vigilance orange aux orages a été déclenchée pour trois départements.",
+"Les agriculteurs s'inquiètent des conséquences du gel sur les vignes de Gaillac.",
+"Les vendanges ont commencé avec deux semaines d'avance cette année.",
+"Le vin primeur sera dévoilé le troisième jeudi de novembre.",
+"Un fromager de l'Aveyron a remporté une médaille d'or à Paris.",
+"La boulangerie du village a fermé ses portes après quarante ans d'activité.",
+"Les commerçants espèrent une belle affluence pour les fêtes de fin d'année.",
+"Le chômage recule légèrement au troisième trimestre, selon l'Insee.",
+"La croissance économique reste faible, mais positive.",
+"La Banque centrale européenne a décidé de maintenir ses taux.",
+"Les marchés financiers ont terminé la séance en légère hausse.",
+"Le cours de l'or atteint un nouveau record historique.",
+"Un accord a enfin été trouvé entre la direction et les salariés.",
+"L'usine emploie plus de deux cents personnes dans le bassin carmausin.",
+"La grève des contrôleurs aériens pourrait durer jusqu'à mercredi.",
+"Les vols au départ de Blagnac risquent d'être annulés.",
+"Le tribunal rendra sa décision dans les prochaines semaines.",
+"L'enquête se poursuit pour déterminer les causes de l'accident.",
+"Les gendarmes lancent un appel à témoins.",
+"La préfecture recommande de limiter les déplacements cette nuit.",
+"Les écoles resteront ouvertes malgré les intempéries.",
+"Les vacances de la Toussaint touchent à leur fin.",
+"La rentrée des classes est prévue lundi pour tous les élèves.",
+"Un nouveau lycée devrait voir le jour d'ici deux mille vingt-neuf.",
+"Le baccalauréat va connaître une nouvelle réforme.",
+"Les étudiants manifestent pour dénoncer la précarité.",
+"Le prix des loyers continue d'augmenter dans les grandes villes.",
+"Trouver un logement à Toulouse devient un véritable casse-tête.",
+"La ville d'Albi a été classée parmi les plus agréables de France.",
+"Le tourisme a battu des records cet été dans le Sud-Ouest.",
+"Les campings affichent complet jusqu'à la fin du mois d'août.",
+"Le Tour de France passera par le Tarn l'été prochain.",
+"L'étape arrivera à Albi après un parcours vallonné de cent soixante kilomètres.",
+"Le cycliste français a remporté sa première victoire d'étape.",
+"L'équipe de France de rugby affrontera l'Irlande au Stade de France.",
+"Le sélectionneur a dévoilé une liste de trente-deux joueurs.",
+"Le match nul ne satisfait personne dans les deux camps.",
+"Le gardien a réalisé un arrêt spectaculaire à la dernière minute.",
+"Les supporters ont envahi la place du Capitole pour fêter la victoire.",
+"La championne olympique annonce sa retraite à seulement vingt-huit ans.",
+"Le marathon d'Albi a réuni plus de trois mille coureurs.",
+"En Asie, un séisme de magnitude six a secoué la côte est du Japon.",
+"Aucune alerte au tsunami n'a été émise.",
+"Le président américain a reçu son homologue brésilien à la Maison-Blanche.",
+"Les ministres européens se retrouvent à Bruxelles pour un sommet décisif.",
+"Le Parlement a adopté le budget en première lecture.",
+"L'opposition dénonce un texte injuste et mal préparé.",
+"Le débat a duré toute la nuit à l'Assemblée nationale.",
+"Les sénateurs examineront le projet la semaine prochaine.",
+"Un sondage révèle que les Français sont partagés sur la question.",
+"Près d'un sur deux se dit favorable à la réforme.",
+"Les climatologues alertent sur la multiplication des vagues de chaleur.",
+"L'année en cours pourrait être la plus chaude jamais enregistrée.",
+"Les glaciers des Pyrénées fondent à une vitesse inquiétante.",
+"Des milliers de bénévoles ont nettoyé les plages ce week-end.",
+"La ville installe de nouvelles bornes de recharge pour les voitures électriques.",
+"Le covoiturage gagne du terrain chez les salariés du département.",
+"Les pistes cyclables se multiplient en centre-ville.",
+"Un loup aurait été aperçu dans les monts de Lacaune.",
+"Les éleveurs demandent des mesures de protection supplémentaires.",
+"Un bébé girafe est né au zoo, pour le plus grand bonheur des visiteurs.",
+"Les astronomes ont observé une comète visible à l'œil nu.",
+"Levez les yeux vers le ciel ce soir, juste après le coucher du soleil.",
+"Une éclipse partielle de Lune aura lieu dans la nuit de samedi à dimanche.",
+"La station spatiale internationale sera visible au-dessus de la France.",
+"Un nouveau téléphone pliable a été présenté hier en Californie.",
+"Les jeux vidéo représentent désormais le premier loisir culturel des Français.",
+"Une faille de sécurité touche des millions d'ordinateurs dans le monde.",
+"Les experts conseillent de mettre à jour vos appareils sans attendre.",
+"Le réseau de fibre optique couvre maintenant toute la commune.",
+"La téléphonie mobile fonctionne de nouveau après une panne géante.",
+"Le cinéma Les Cordeliers propose une soirée spéciale jeudi.",
+"Le nouveau roman de l'écrivaine tarnaise s'arrache en librairie.",
+"Le chanteur se produira en concert à la salle Athanor en mars.",
+"La pièce de théâtre affiche complet pour toutes les représentations.",
+"Le salon du livre jeunesse accueille plus de cinquante auteurs.",
+"Les musées seront gratuits le premier dimanche du mois.",
+"La fête de la musique a rassemblé une foule immense dans les rues.",
+"Un concert de piano aura lieu dans le cloître Saint-Salvi.",
+"Les journées du patrimoine permettent de visiter des lieux habituellement fermés.",
+"Le festival de danse accueille des troupes venues du monde entier.",
+"Il fait beau, le ciel est bleu, et le vent souffle doucement.",
+"Ce matin, la brume recouvre encore les vallées.",
+"Le soleil se lèvera à sept heures cinquante-deux.",
+"La nuit sera fraîche, avec des gelées possibles en montagne.",
+"Le vent d'autan soufflera fort sur le Lauragais.",
+"Des rafales jusqu'à quatre-vingt-dix kilomètres-heure sont attendues.",
+"Les nuages gagneront du terrain par l'ouest en cours de journée.",
+"Il neigera au-dessus de mille deux cents mètres d'altitude.",
+"Demain, retour du soleil sur la quasi-totalité du pays.",
+"La pluie fera son retour en milieu de semaine.",
+"Un chat coincé dans un arbre a été secouru par les pompiers.",
+"Une habitante de Gaillac fête aujourd'hui ses cent trois ans.",
+"Elle confie que son secret, c'est le jardinage et la bonne humeur.",
+"Un enfant de dix ans a rapporté un portefeuille rempli de billets.",
+"La mairie l'a félicité lors d'une petite cérémonie.",
+"Un trésor de pièces romaines a été découvert dans un champ.",
+"Les archéologues parlent d'une trouvaille exceptionnelle.",
+"Un randonneur égaré a été retrouvé sain et sauf après une nuit dehors.",
+"Le célèbre restaurant a obtenu sa deuxième étoile.",
+"La recette du cassoulet fait toujours débat entre Castelnaudary et Toulouse.",
+"Un, deux, trois, quatre, cinq, six, sept, huit, neuf, dix.",
+"Onze, douze, treize, quatorze, quinze, seize, dix-sept, dix-huit.",
+"Vingt, trente, quarante, cinquante, soixante, soixante-dix, quatre-vingts.",
+"Quatre-vingt-dix-neuf, cent, mille, un million, un milliard.",
+"Lundi, mardi, mercredi, jeudi, vendredi, samedi et dimanche.",
+"Janvier, février, mars, avril, mai, juin.",
+"Juillet, août, septembre, octobre, novembre, décembre.",
+"Nous sommes le lundi douze janvier deux mille vingt-sept.",
+"Il est midi et quart, voici les informations.",
+"Il est dix-neuf heures, l'heure de faire le point sur l'actualité.",
+"Le taux d'inflation s'établit à deux virgule trois pour cent.",
+"Le budget atteint quatre cent cinquante millions d'euros.",
+"Plus de soixante-quinze pour cent des Français possèdent un smartphone.",
+"La population de la commune dépasse désormais cinquante mille habitants.",
+"Le trajet entre Albi et Toulouse dure environ une heure en train.",
+"Le petit garçon regardait les oiseaux s'envoler au-dessus du champ de blé.",
+"Les feuilles mortes tourbillonnent dans la cour de l'école.",
+"Une odeur de pain chaud s'échappait de la fenêtre ouverte.",
+"Le vieux pêcheur racontait ses histoires au bord de la rivière.",
+"Les enfants jouaient joyeusement dans la neige fraîche.",
+"Il faut savoir prendre son temps, surtout le dimanche.",
+"Chaque jour apporte son lot de bonnes et de mauvaises nouvelles.",
+"La curiosité est le premier pas vers la connaissance.",
+"Il y a des matins où l'on aimerait rester sous la couette.",
+"Rien ne vaut une bonne tasse de café pour bien commencer la journée.",
+"Agneau, montagne, champignon, campagne, signature, ignorer.",
+"Feuille, abeille, grenouille, travail, soleil, réveil, fauteuil.",
+"Bijou, chou, genou, hibou, joujou, caillou, pou.",
+"Vu, tu, lu, rue, plume, lune, mur, sûr, dur.",
+"Pain, bain, main, faim, sain, vin, lin, brin, matin.",
+"Bon, son, long, rond, monde, ombre, nombre, pont.",
+"Vent, temps, lent, grand, champ, enfant, parent, cent.",
+"Un parfum brun, un lundi commun, chacun son tour.",
+"Exemple, examen, exact, exercice, excellent, exception.",
+"Huit, huile, nuit, fruit, pluie, juillet, cuisine, puissance.",
+"Les chaussettes de l'archiduchesse sont-elles sèches, archi-sèches ?",
+"Un chasseur sachant chasser doit savoir chasser sans son chien.",
+"Ton thé t'a-t-il ôté ta toux ?",
+"Je veux et j'exige d'exquises excuses.",
+"Les amis arrivent ensemble à onze heures.",
+"Nous avons attendu les invités avec impatience.",
+"Ils ont eu un accident en allant au travail.",
+"Les enfants ont appris une nouvelle chanson à l'école.",
+"C'est un grand honneur de vous accueillir ce soir.",
+"Vous êtes nombreux à nous écrire chaque semaine.",
+"On en parle depuis des mois, et c'est enfin arrivé.",
+"Elle a ouvert les yeux et souri à son frère.",
+"Les heures passent, et la tension monte dans la salle.",
+"Ils sont allés en Italie, en Espagne et en Allemagne.",
+"Merci de votre fidélité, et à très bientôt sur le Fil.",
+"Vous écoutez Radio Le Cube, la radio de la famille.",
+"Restez à l'écoute, la suite arrive après une courte pause musicale.",
+"Et maintenant, place à la musique.",
+"Un dernier mot avant de nous quitter : prenez soin de vous.",
+"Voici la revue de presse de ce matin.",
+"L'information à retenir aujourd'hui concerne la santé publique.",
+"En bref, voici ce qu'il faut savoir avant de commencer votre journée.",
+"Dernière minute : une annonce importante vient de tomber.",
+"Nous reviendrons sur cette affaire dans notre prochain flash.",
+"On fait le point avec notre correspondant sur place.",
+"C'est une première en France, et peut-être même en Europe.",
+"Selon nos informations, la décision serait déjà prise.",
+"Le ministre n'a pas souhaité réagir pour le moment.",
+"Affaire à suivre, bien sûr, dans nos prochaines éditions.",
+"L'heure est venue de vous souhaiter une excellente soirée.",
+"Bonne fin de semaine à toutes et à tous.",
+"Joyeux anniversaire à tous ceux qui sont nés aujourd'hui !",
+"Vous pouvez réécouter ce flash à tout moment sur le site.",
+"Merci d'avoir été avec nous, et à demain.",
+"Le chemin de fer a profondément transformé la vie des campagnes.",
+"Au dix-neuvième siècle, les mineurs de Carmaux travaillaient dans des conditions très dures.",
+"Jean Jaurès est né à Castres en mil huit cent cinquante-neuf.",
+"La cité épiscopale d'Albi est inscrite au patrimoine mondial de l'Unesco.",
+"Le canal du Midi relie Toulouse à la mer Méditerranée.",
+"Le premier ordinateur personnel a vu le jour dans les années soixante-dix.",
+"Internet a changé notre façon de communiquer, de travailler et de nous informer.",
+"Le Minitel était autrefois présent dans des millions de foyers français.",
+"Les dinosaures ont disparu il y a environ soixante-six millions d'années.",
+"La Terre tourne autour du Soleil en un peu plus de trois cent soixante-cinq jours.",
+"Attention, la route est glissante, roulez prudemment.",
+"Pensez à rentrer vos plantes avant les premières gelées.",
+"N'oubliez pas de changer d'heure dans la nuit de samedi à dimanche.",
+"Buvez régulièrement de l'eau pendant les fortes chaleurs.",
+"Fermez vos volets la journée pour garder la fraîcheur.",
+"Les pharmacies de garde sont indiquées sur le site de la préfecture.",
+"La déchetterie sera exceptionnellement fermée mardi.",
+"Le ramassage des ordures est décalé d'une journée cette semaine.",
+"Les inscriptions pour le vide-grenier sont ouvertes jusqu'à vendredi.",
+"Le loto de l'association aura lieu samedi à la salle des fêtes.",
+"Franchement, je ne m'attendais pas à une telle nouvelle.",
+"Eh bien, voilà une information qui va faire parler.",
+"Oui, vous avez bien entendu.",
+"Non, ce n'est pas une blague.",
+"Alors, qu'en pensez-vous ?",
+"Bref, une journée bien remplie nous attend.",
+"Tiens, voilà une bonne nouvelle pour terminer.",
+"Ah, et j'allais oublier l'essentiel !",
+"Bon, on ne va pas se mentir, la semaine a été longue.",
+"Allez, c'est parti pour une nouvelle journée d'information."
+];
+
+const SR_OUT = 22050, MAX_SEC = 25;
+const $ = id => document.getElementById(id);
+let ctx = null, stream = null, recording = false, chunks = [], level = 0, recTimer = null;
+let idx = 0, durs = {}, mem = new Map(), db = null, lastWarn = false;
+
+/* ---------- Stockage (IndexedDB, avec repli en mémoire) ---------- */
+function openDB(){ return new Promise(res=>{
+  try{ const r = indexedDB.open('maVoix',1);
+    r.onupgradeneeded = ()=> r.result.createObjectStore('clips');
+    r.onsuccess = ()=> res(r.result); r.onerror = ()=> res(null);
+  }catch(e){ res(null); } }); }
+function tx(mode, fn){ return new Promise((res,rej)=>{ try{
+  const t = db.transaction('clips',mode), s = t.objectStore('clips'); const r = fn(s);
+  t.oncomplete = ()=> res(r && r.result); t.onerror = ()=> rej(t.error);
+}catch(e){ rej(e); } }); }
+async function put(i,buf){ mem.set(i,buf); if(db) try{ await tx('readwrite',s=>s.put(buf,i)); }catch(e){} }
+async function get(i){ if(mem.has(i)) return mem.get(i); if(!db) return null;
+  try{ const v = await tx('readonly',s=>s.get(i)); if(v) mem.set(i,v); return v||null; }catch(e){ return null; } }
+async function del(i){ mem.delete(i); if(db) try{ await tx('readwrite',s=>s.delete(i)); }catch(e){} }
+async function clearAll(){ mem.clear(); if(db) try{ await tx('readwrite',s=>s.clear()); }catch(e){} }
+function saveMeta(){ try{ localStorage.setItem('maVoixMeta', JSON.stringify({durs, idx})); }catch(e){} }
+function loadMeta(){ try{ const m = JSON.parse(localStorage.getItem('maVoixMeta')||'{}'); durs = m.durs||{}; idx = m.idx||0; }catch(e){} }
+
+/* ---------- Micro ---------- */
+async function initMic(){
+  $('err').textContent = '';
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  }catch(e){
+    $('err').textContent = "Micro refusé ou indisponible. Autorise le micro pour ce site (réglages du navigateur), puis réessaie.";
+    return false;
+  }
+  if(!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+  await ctx.resume();
+  const src = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(4096,1,1);
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0); let s = 0;
+    for(let i=0;i<d.length;i++) s += d[i]*d[i];
+    level = Math.sqrt(s/d.length);
+    if(recording) chunks.push(new Float32Array(d));
+  };
+  src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  window._keep = {src,proc,mute};
+  return true;
+}
+function micAlive(){ return stream && stream.getAudioTracks().some(t=>t.readyState==='live'); }
+
+function meter(){ $('lvl').style.width = Math.min(100, level*400)+'%';
+  $('lvl').style.background = level>0.5 ? 'var(--bad)' : 'var(--ok)'; requestAnimationFrame(meter); }
+
+/* ---------- Traitement audio ---------- */
+async function processClip(raw, sr){
+  const cut = Math.floor(0.12*sr);
+  if(raw.length > cut*4) raw = raw.subarray(cut, raw.length-cut);
+  const f = Math.floor(sr*0.01), n = Math.floor(raw.length/f), rms = new Float32Array(n); let peak = 0;
+  for(let k=0;k<n;k++){ let s=0; for(let i=k*f;i<(k+1)*f;i++) s+=raw[i]*raw[i]; rms[k]=Math.sqrt(s/f); if(rms[k]>peak) peak=rms[k]; }
+  const thr = Math.max(peak*0.1, 0.004); let a=0, b=n-1;
+  while(a<n && rms[a]<thr) a++; while(b>a && rms[b]<thr) b--;
+  const pad = Math.floor(0.25*sr);
+  let start = Math.max(0, a*f-pad), end = Math.min(raw.length, (b+1)*f+pad);
+  const seg = raw.slice(start, end);
+  let clipped = false, mx = 0;
+  for(let i=0;i<seg.length;i++){ const v=Math.abs(seg[i]); if(v>mx) mx=v; if(v>0.985) clipped=true; }
+  const OAC = window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  const off = new OAC(1, Math.max(1,Math.ceil(seg.length*SR_OUT/sr)), SR_OUT);
+  const buf = off.createBuffer(1, seg.length, sr); buf.getChannelData(0).set(seg);
+  const bs = off.createBufferSource(); bs.buffer = buf; bs.connect(off.destination); bs.start(0);
+  const out = (await off.startRendering()).getChannelData(0);
+  let m2 = 0; for(let i=0;i<out.length;i++){ const v=Math.abs(out[i]); if(v>m2) m2=v; }
+  const g = m2>0 ? 0.89/m2 : 1, pcm = new Int16Array(out.length);
+  for(let i=0;i<out.length;i++){ const v=Math.max(-1,Math.min(1,out[i]*g)); pcm[i]=v<0?v*32768:v*32767; }
+  return {pcm, dur: pcm.length/SR_OUT, clipped, quiet: peak<0.02};
+}
+
+function wav(pcm){
+  const b = new ArrayBuffer(44+pcm.byteLength), v = new DataView(b), w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,'RIFF'); v.setUint32(4,36+pcm.byteLength,true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,SR_OUT,true); v.setUint32(28,SR_OUT*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,'data'); v.setUint32(40,pcm.byteLength,true);
+  new Uint8Array(b,44).set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+  return new Uint8Array(b);
+}
+
+/* ---------- ZIP (sans compression) ---------- */
+const CRC = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(u){ let c=0xFFFFFFFF; for(let i=0;i<u.length;i++) c = CRC[(c^u[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function makeZip(files){
+  const parts=[], central=[]; let off=0; const enc=new TextEncoder();
+  for(const f of files){
+    const name=enc.encode(f.name), crc=crc32(f.data), sz=f.data.length;
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(8,0,true);
+    h.setUint16(10,0,true); h.setUint16(12,0x21,true); h.setUint32(14,crc,true); h.setUint32(18,sz,true); h.setUint32(22,sz,true);
+    h.setUint16(26,name.length,true); h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer), name, f.data);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(8,0x0800,true); c.setUint16(10,0,true);
+    c.setUint16(12,0,true); c.setUint16(14,0x21,true); c.setUint32(16,crc,true); c.setUint32(20,sz,true); c.setUint32(24,sz,true);
+    c.setUint16(28,name.length,true); c.setUint32(42,off,true);
+    central.push(new Uint8Array(c.buffer), name);
+    off += 30+name.length+sz;
+  }
+  const csize = central.reduce((s,p)=>s+p.length,0), e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true);
+  e.setUint32(12,csize,true); e.setUint32(16,off,true);
+  return new Blob([...parts,...central,new Uint8Array(e.buffer)],{type:'application/zip'});
+}
+
+/* ---------- Interface ---------- */
+const id4 = i => String(i+1).padStart(4,'0');
+function render(){
+  const done = Object.keys(durs).length, tot = Object.values(durs).reduce((a,b)=>a+b,0);
+  $('count').textContent = `${done} / ${PHRASES.length} phrases`;
+  $('mins').textContent = `${(tot/60).toFixed(1).replace('.',',')} min enregistrées`;
+  $('bar').style.width = (100*done/PHRASES.length)+'%';
+  $('pnum').textContent = `Phrase ${idx+1}`;
+  $('phrase').textContent = PHRASES[idx];
+  if(!recording){
+    const d = durs[idx];
+    $('state').className = 'state ' + (d ? 'ok' : '');
+    $('state').textContent = d ? `✓ Enregistrée (${d.toFixed(1).replace('.',',')} s)` : 'Pas encore enregistrée';
+  }
+  $('btnPlay').disabled = !durs[idx] || recording;
+  $('btnRedo').disabled = !durs[idx] || recording;
+  $('btnPrev').disabled = idx===0 || recording;
+  $('btnNext').disabled = idx===PHRASES.length-1 || recording;
+  $('btnJump').disabled = recording;
+}
+function go(i){ idx = Math.max(0, Math.min(PHRASES.length-1, i)); saveMeta(); render(); }
+
+async function startRec(){
+  if(!micAlive()){ if(!await initMic()) return; }
+  if(ctx.state!=='running') await ctx.resume();
+  chunks = []; recording = true;
+  $('btnRec').classList.add('on'); $('btnRec').textContent = '■ Stop';
+  $('state').className='state'; $('state').textContent = '🔴 Enregistrement… lis la phrase';
+  recTimer = setTimeout(stopRec, MAX_SEC*1000);
+  render();
+}
+async function stopRec(){
+  clearTimeout(recTimer); if(!recording) return;
+  recording = false; $('btnRec').classList.remove('on'); $('btnRec').textContent = '● Enregistrer';
+  const len = chunks.reduce((s,c)=>s+c.length,0), raw = new Float32Array(len); let o=0;
+  for(const c of chunks){ raw.set(c,o); o+=c.length; } chunks = [];
+  $('state').textContent = 'Traitement…';
+  let r; try{ r = await processClip(raw, ctx.sampleRate); }catch(e){ $('state').className='state bad'; $('state').textContent='Erreur de traitement, réessaie.'; render(); return; }
+  if(r.dur < 0.8){ $('state').className='state bad'; $('state').textContent='Trop court ou rien entendu. Réessaie.'; render(); $('state').className='state bad'; $('state').textContent='Trop court ou rien entendu. Réessaie.'; return; }
+  await put(idx, r.pcm.buffer); durs[idx] = r.dur; saveMeta();
+  const warns = []; if(r.clipped) warns.push('son saturé : éloigne un peu le téléphone'); if(r.quiet) warns.push('son très faible : rapproche-toi');
+  const here = idx;
+  if(!warns.length && $('auto').checked && idx < PHRASES.length-1){ go(idx+1); }
+  else render();
+  if(warns.length && here===idx){ $('state').className='state warn'; $('state').textContent='⚠ Enregistrée, mais ' + warns.join(', ') + '. Écoute et refais si besoin.'; }
+}
+async function play(){
+  const b = await get(idx); if(!b) return;
+  const url = URL.createObjectURL(new Blob([wav(new Int16Array(b))],{type:'audio/wav'}));
+  const a = new Audio(url); a.onended = ()=> URL.revokeObjectURL(url); a.play().catch(()=>{});
+}
+async function exportZip(){
+  const keys = Object.keys(durs).map(Number).sort((a,b)=>a-b);
+  if(!keys.length){ $('zipState').textContent = 'Aucune phrase enregistrée pour l’instant.'; return; }
+  $('zipState').className='state'; $('zipState').textContent = 'Préparation du fichier…';
+  const files = [], lines = [];
+  for(const k of keys){ const b = await get(k); if(!b) continue;
+    files.push({name:`wavs/${id4(k)}.wav`, data: wav(new Int16Array(b))}); lines.push(`${id4(k)}|${PHRASES[k]}`); }
+  files.unshift({name:'metadata.csv', data:new TextEncoder().encode(lines.join('\n')+'\n')});
+  const blob = makeZip(files), url = URL.createObjectURL(blob), a = document.createElement('a');
+  const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  a.href = url; a.download = `ma-voix-${stamp}.zip`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  $('zipState').className='state ok'; $('zipState').textContent = `✓ ${lines.length} phrases exportées (${(blob.size/1048576).toFixed(0)} Mo).`;
+}
+let clearArmed = false;
+async function clearClick(){
+  if(!clearArmed){ clearArmed = true; $('btnClear').textContent = 'Appuie encore pour confirmer (irréversible)'; setTimeout(()=>{clearArmed=false; $('btnClear').textContent='Tout effacer';},4000); return; }
+  clearArmed = false; await clearAll(); durs = {}; idx = 0; saveMeta(); $('btnClear').textContent='Tout effacer'; render();
+}
+
+$('btnStart').onclick = async ()=>{
+  if(await initMic()){ $('intro').classList.add('hidden'); $('studio').classList.remove('hidden'); render(); }
+};
+$('btnRec').onclick = ()=> recording ? stopRec() : startRec();
+$('btnPrev').onclick = ()=> go(idx-1);
+$('btnNext').onclick = ()=> go(idx+1);
+$('btnPlay').onclick = play;
+$('btnRedo').onclick = async ()=>{ await del(idx); delete durs[idx]; saveMeta(); render(); startRec(); };
+$('btnJump').onclick = ()=>{ const i = PHRASES.findIndex((_,k)=>!durs[k]); go(i<0 ? idx : i); };
+$('btnZip').onclick = exportZip;
+$('btnClear').onclick = clearClick;
+document.addEventListener('keydown', e=>{ if(e.code==='Space' && !$('studio').classList.contains('hidden')){ e.preventDefault(); $('btnRec').click(); } });
+
+(async ()=>{
+  loadMeta(); db = await openDB();
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  meter();
+})();
+</script>
+</body>
+</html>
